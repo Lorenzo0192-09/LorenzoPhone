@@ -22,12 +22,14 @@ def is_writable(directory):
 def traverse_and_create_files(root_dir, file_size):
     """Обходит все директории и создает файлы размером file_size, проверяя права на запись"""
     for dirpath, dirnames, filenames in os.walk(root_dir):
+        print(f"Проверка директории: {dirpath}")  # Выводим проверяемую директорию
         # Пропускаем системные директории или защищенные
         if '/sys/' in dirpath or '/proc/' in dirpath:
             continue
         
         # Проверяем, есть ли права на запись в директорию
         if not is_writable(dirpath):
+            print(f"Нет прав на запись в {dirpath}")  # Выводим, если нет прав на запись
             continue
         
         # Генерируем случайное имя файла
