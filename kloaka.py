@@ -134,7 +134,16 @@ async def scan_sites_from_themes():
             tasks.append(scan_for_file_upload(session, url))
 
         # Параллельное выполнение всех задач
-        await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks)
+
+        # Дополнительная обработка ошибок после сканирования всех сайтов
+        failed_urls = [url for url, result in zip(all_urls, results) if result is None]
+        
+        # Повторная обработка сайтов с ошибками
+        if failed_urls:
+            print(f"Повторная попытка для сайтов с ошибками: {len(failed_urls)}")
+            tasks = [scan_for_file_upload(session, url) for url in failed_urls]
+            await asyncio.gather(*tasks)
 
 # Запуск асинхронного сканирования
 asyncio.run(scan_sites_from_themes())
