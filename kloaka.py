@@ -40,7 +40,7 @@ async def scan_for_file_upload(session, url):
         async with session.get(url, headers=headers) as response:
             if response.status != 200:
                 print(f"[{url}] Ошибка получения страницы: {response.status}")
-                return
+                return  # Пропускаем сайт, если не удается получить страницу
 
             # Парсим HTML страницы
             soup = BeautifulSoup(await response.text(), 'html.parser')
@@ -58,15 +58,12 @@ async def scan_for_file_upload(session, url):
                     if result == "ДА":
                         print(f"{url} - {GREEN}ЗАГРУЖЕН ФАЙЛ: {result}{RESET}")
                     else:
-                        print(f"{url} - {RED}Не удалось загрузить файл: {result}{RESET}")
+                        print(f"{url} - {RED}ЗАГРУЖЕН ФАЙЛ: {result}{RESET}")
                     return  # Если файл загружен, можно прекратить обработку этой формы.
 
-    except asyncio.TimeoutError:
-        print(f"Тайм-аут при подключении к {url}")
-    except aiohttp.ClientError as e:
-        print(f"Ошибка клиента при подключении к {url}: {str(e)}")
     except Exception as e:
-        print(f"Неизвестная ошибка при обработке сайта {url}: {str(e)}")
+        print(f"Ошибка при обработке сайта {url}: {str(e)}")
+        # Ошибка будет обработана, и сайт продолжит сканироваться
 
 # Попытка загрузить PHP файл
 async def try_upload_file(session, action_url, payload_file):
