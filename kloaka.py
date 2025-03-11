@@ -1,8 +1,8 @@
 import aiohttp
 import asyncio
-import requests
-from bs4 import BeautifulSoup
+from googlesearch import search
 from random import choice
+from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
 # Готовим файл для теста
@@ -37,26 +37,12 @@ themes = [
 
 # Функция для отправки поискового запроса в Google
 def google_search(query, num_results=10):
-    url = f"https://www.google.com/search?q={query}&num={num_results}"
-    
-    headers = {'User-Agent': choice(USER_AGENTS)}
-    response = requests.get(url, headers=headers)
-    
-    if response.status_code != 200:
-        print(f"Ошибка при запросе в Google: {response.status_code}")
+    print(f"Поиск сайтов по запросу: {query}")
+    try:
+        return list(search(query, num_results=num_results))
+    except Exception as e:
+        print(f"Ошибка при поиске в Google: {e}")
         return []
-
-    soup = BeautifulSoup(response.text, 'html.parser')
-    links = []
-
-    # Ищем все результаты поиска (ссылки на сайты)
-    for a in soup.find_all('a', href=True):
-        href = a['href']
-        # Фильтруем ссылки, чтобы оставались только сайты
-        if href.startswith('http'):
-            links.append(href)
-
-    return links
 
 # Функция для асинхронного сканирования сайта
 async def scan_for_file_upload(session, url):
@@ -115,10 +101,14 @@ async def try_upload_file(session, action_url, payload_file):
 async def scan_sites_from_themes():
     all_urls = []
     
+    # Поиск по каждой теме
     for theme in themes:
-        print(f"Поиск сайтов по запросу: {theme}")
         links = google_search(theme)
         all_urls.extend(links)
+
+    if not all_urls:
+        print("Не удалось найти сайты по указанным запросам.")
+        return
 
     # Асинхронная сессия
     async with aiohttp.ClientSession() as session:
