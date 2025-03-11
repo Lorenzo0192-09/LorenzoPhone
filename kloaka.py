@@ -22,9 +22,18 @@ GREEN = "\033[92m"
 RED = "\033[91m"
 RESET = "\033[0m"
 
+# Функция для проверки, является ли сайт Википедией
+def is_wikipedia(url):
+    return "wikipedia" in url.lower()
+
 # Функция для асинхронного сканирования сайта
 async def scan_for_file_upload(session, url):
     try:
+        # Если это Википедия, пропускаем сайт
+        if is_wikipedia(url):
+            print(f"{url} - Пропущен (Википедия)")
+            return
+
         headers = {'User-Agent': choice(USER_AGENTS)}
 
         # Выполняем GET-запрос с заголовками
