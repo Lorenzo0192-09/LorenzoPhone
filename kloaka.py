@@ -109,7 +109,8 @@ async def try_upload_file(session, action_url, payload_file):
                             return "ДА", file_url
                         else:
                             return "НЕТ", ""
-                    elif upload_response.status == 405:
+                    elif upload_response.status == 405:  # Метод не разрешен
+                        print(f"Ошибка 405 при загрузке на {action_url}. Пропускаем...")
                         return "Ошибка при загрузке: Метод не разрешен", ""
                     else:
                         return f"Ошибка при загрузке: {upload_response.status}", ""
